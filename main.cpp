@@ -54,6 +54,7 @@ int8_t find_winner(GameState& game_state);
 int8_t calculate_winner(GameState& game_state);
 int8_t calculate_suit(GameState& game_state, int suit);
 int8_t process_move(GameState& game_state, int suit, int side, int new_val);
+bool player_has_available_moves(GameState& game_state);
 bool is_card_valid_to_play(const GameState& game_state, int suit, int card);
 bool opponent_has_remaining_cards(const GameState& game_state);
 void calculate_player_bounds();
@@ -136,7 +137,7 @@ int main()
         reverse(decks[1][i]);
     // Calculating the second player's deck
     decks[2] = inverse(decks[1]);
-    assert(decks[1][0][L_SIZE-1]); // First player must have the starting card
+    assert(decks[1][0][MCARD]); // First player must have the starting card
     std::cout << "My deck: ";
     print_deck(decks[1]);
     std::cout << "Your deck: ";
@@ -155,15 +156,12 @@ int main()
     }
     while (opponent_has_remaining_cards(game_state))
     {
-        //print_game_state(game_state);
-        //print_game_state(game_state);
         if (game_state.current_player == FIRST_PLAYER)
         {
             if (!has_won && find_winner(game_state) == FIRST_PLAYER_WINNING)
             {
                 std::cout << "You lost your chance, I'll definitely win :)\n";
                 has_won = true;
-   
             }
             std::array<int, 3> ai_move = get_best_move(game_state);
             if (ai_move[0] == -1)
@@ -175,9 +173,12 @@ int main()
                 std::cout << "I play " << cards[ai_move[2]] << " " << suits[ai_move[0]] << "\n";
                 game_state.apply_move(ai_move);
             }
-            game_state.switch_players();
         }
-        else if (game_state.current_player == SECOND_PLAYER)
+        else if (!player_has_available_moves(game_state))
+        {
+            std::cout << "You've no moves to play!\n";
+        }
+        else
         {
             int suit, card;
             while (true)
@@ -189,8 +190,8 @@ int main()
                 std::cout << "You can't play that card silly :)\n";
             }
             game_state.apply_move(suit, card);
-            game_state.switch_players();
         }
+        game_state.switch_players();
     }
     if (opponent(game_state.current_player) == FIRST_PLAYER_WINNING)
         std::cout << "I won!\n";
@@ -206,13 +207,18 @@ int8_t find_winner(GameState& game_state)
     return get_memory(game_state);
 }
 
+bool player_has_available_moves(GameState& game_state)
+{
+    return get_best_move(game_state)[0] != -1;
+}
+
 // Return value: (Suit, side, move) if there's a move (-1, -1, -1) if no move exists
 std::array<int, 3> get_best_move(GameState& game_state)
 {
     int player = game_state.current_player;
-    if (!opponent_has_remaining_cards(game_state))
-        return {-1, -1, -1}; // Clearly defeated
     std::array<int, 3> best_move = {-1, -1, -1};
+    if (!opponent_has_remaining_cards(game_state))
+        return best_move; // Clearly defeated
     for (int i = 0; i < SUIT_COUNT; i++)
     {
         if (!game_state.suit_opened(i) && decks[player][i][MCARD])
@@ -223,8 +229,6 @@ std::array<int, 3> get_best_move(GameState& game_state)
         }
         if (!game_state.suit_opened(i))
             continue;
-        if (player == 1 && i == 1)
-            std::cout << game_state.get_left(i) << " " << decks[player][i][game_state.get_left(i)] << "\n";
         if (game_state.get_left(i) >= 0 && decks[player][i][game_state.get_left(i)])
         {
             best_move = {i, 0, game_state.get_left(i)};
@@ -302,7 +306,12 @@ int8_t process_move(GameState& game_state, int suit, int side, int new_val)
 
 bool is_card_valid_to_play(const GameState& game_state, int suit, int card)
 {
-    return (!game_state.suit_opened(suit) && card == MCARD) || (game_state.suit_opened(suit) && (card == game_state.get_left(suit) || game_state.get_right(suit) == card)); 
+    return
+        0 <= suit && suit < SUIT_COUNT &&
+        0 <= card && card < SUIT_SIZE && 
+        decks[game_state.current_player][suit][card] && 
+        ((!game_state.suit_opened(suit) && card == MCARD) || 
+        (game_state.suit_opened(suit) && (card == game_state.get_left(suit) || card == game_state.get_right(suit)))); 
 }
 
 bool opponent_has_remaining_cards(const GameState& game_state)
