@@ -2,6 +2,7 @@
 #include <array>
 #include <bitset>
 #include <cassert>
+#include <cstdlib>
 
 #define DEBUGGING
 
@@ -10,6 +11,7 @@ const int R_SIZE     = 7; // How many cards are in the right (including the midd
 const int SUIT_COUNT = 4; // How many suits are in the game (always 4, don't change it for debugging)
 const int MCARD      = L_SIZE-1;
 const int SUIT_SIZE  = L_SIZE + R_SIZE - 1;
+const int DECK_SIZE = SUIT_SIZE * SUIT_COUNT;
 
 typedef std::array<std::bitset<SUIT_SIZE>, SUIT_COUNT> Deck;
 typedef std::array<std::array<int8_t, 2>, SUIT_COUNT> PlayerBound;
@@ -48,6 +50,7 @@ struct GameState
 };
 
 int8_t& get_memory(const GameState& game_state);
+Deck create_randomized_deck();
 Deck inverse(Deck deck);
 std::array<int, 3> get_best_move(GameState& game_state);
 int8_t find_winner(GameState& game_state);
@@ -127,12 +130,9 @@ void reverse(std::bitset<N>& b)
 
 int main()
 {
+    srand((unsigned) time(NULL));
     // Getting the first player's deck
-    decks[1] = { 
-    std::bitset<SUIT_SIZE>("0111011011011"),  // clubs
-    std::bitset<SUIT_SIZE>("1011000000101"), // diamonds
-    std::bitset<SUIT_SIZE>("1000100010001"), // hearts
-    std::bitset<SUIT_SIZE>("0110100011011") }; // spades
+    decks[1] = create_randomized_deck();
     for (int i = 0; i < SUIT_COUNT; i++)
         reverse(decks[1][i]);
     // Calculating the second player's deck
@@ -365,4 +365,25 @@ int8_t& get_memory(const GameState& game_state)
     auto table_state = game_state.table_state;
     int8_t player_flag = game_state.current_player-1;
     return memory[player_flag][table_state[0][0]][table_state[0][1]][table_state[1][0]][table_state[1][1]][table_state[2][0]][table_state[2][1]][table_state[3][0]][table_state[3][1]];
+}
+
+Deck create_randomized_deck()
+{
+    std::bitset<DECK_SIZE> deck_bits;
+    // How many cards the deck will have (half of full deck as the cards are distributed evenly in the game)
+    int half_size = DECK_SIZE / 2; 
+    for (int i = 0; i < half_size; i++)
+        deck_bits[i] = 1;
+    for (int i = 0; i < DECK_SIZE; i++)
+    {
+        int j = rand() % (i+1);
+        bool tmp = deck_bits[i];
+        deck_bits[i] = deck_bits[j];
+        deck_bits[j] = tmp;
+    }
+    Deck new_deck;
+    for (int i = 0; i < SUIT_COUNT; i++)
+        for (int j = 0; j < SUIT_SIZE; j++)
+            new_deck[i][j] = deck_bits[i*SUIT_SIZE + j];
+    return new_deck;
 }
