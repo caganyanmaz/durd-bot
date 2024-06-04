@@ -1,5 +1,5 @@
-from ctypes import cdll
-lib = cdll.LoadLibrary("./liba.so")
+import ctypes
+lib = ctypes.cdll.LoadLibrary("./liba.so")
 L_SIZE     = 7
 R_SIZE     = 7
 SUIT_COUNT = 4 
@@ -17,6 +17,12 @@ COMPUTER         = 1
 HUMAN            = 2
 CLUBS            = 0 
 
+class Triplet(ctypes.Structure):
+    _fields_ = [("a", ctypes.c_int),
+                ("b", ctypes.c_int),
+                ("c", ctypes.c_int)]
+
+lib.get_best_move.restype = Triplet
 
 def main():
     lib.init()
@@ -30,7 +36,7 @@ def main():
 
 def progress_turn():
     if lib.get_current_player() == COMPUTER:
-        lib.progress_computer_turn()
+        progress_computer_turn()
     else:
         progress_human_turn()
     lib.switch_players()
@@ -45,8 +51,7 @@ def progress_human_turn():
         if lib.is_card_valid_to_play(suit, card):
             break
         print("You can't play that card, silly :)")
-    lib.apply_turn(suit, card)
-
+    lib.apply_move(suit, card)
 
 def ask_choice(name, arr):
     print("Pick a", name + ":")
@@ -59,11 +64,20 @@ def ask_choice(name, arr):
         print("Invalid input, please enter a valid number:", end=" ")
     return int(res) - 1
 
+def progress_computer_turn():
+    res = lib.get_best_move()
+    if res.a == -1:
+        print("Durd!")
+        return
+    print("I play", cards[res.c], suits[res.a])
+    lib.apply_move(res.a, res.c)
+    
 
 def print_deck(deck_type):
     for i in range(SUIT_COUNT):
         for j in range(SUIT_SIZE):
             print(1&deck_type(i, j), end="")
+        print(" ", end="")
     print()
 
 if __name__ == "__main__":

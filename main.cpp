@@ -62,10 +62,6 @@ bool is_card_valid_to_play(const GameState& game_state, int suit, int card);
 bool opponent_has_remaining_cards(const GameState& game_state);
 void calculate_player_bounds();
 void calculate_player_bounds(int player);
-void progress_turn(GameState& game_state);
-void progress_computer_turn(GameState& game_state);
-void progress_human_turn(GameState& game_state);
-void check_win_status(GameState& game_state, bool& has_won);
 
 const int8_t COMPUTER_WINNING = 1;
 const int8_t HUMAN_WINNING    = 2;
@@ -78,67 +74,23 @@ int8_t memory[2][L_SIZE][R_SIZE+1][L_SIZE][R_SIZE+1][L_SIZE][R_SIZE+1][L_SIZE][R
 Deck decks[3];
 PlayerBound player_bounds[3];
 
-#ifdef DEBUGGING
-
-void print_deck(const Deck& deck)
-{
-    for (int i = 0; i < SUIT_COUNT; i++)
-        std::cout << deck[i] << " ";
-    std::cout << "\n"; 
-}
-
-void print_game_state(const GameState& game_state)
-{
-    std::cout << "------- \n";
-    std::cout << "Current player: " << static_cast<int>(game_state.current_player) << "\n";
-    
-    for (int i = 0; i < SUIT_COUNT; i++)
-    {
-        std::cout << static_cast<int>(game_state.table_state[i][0]) << " "<< static_cast<int>(game_state.table_state[i][1]) << "\n";
-    }    
-    std::cout << "------- \n";
-
-}
-
-/*
-int ask_choice(std::string q, std::string names[], int n)
-{
-    std::cout << "Pick " << q << ":\n";
-    for (int i = 0; i < n; i++)
-        std::cout << "(" << (i+1) << ") " << names[i] << "\n";
-    int res;
-    while (true)
-    {
-        std::cin >> res;
-        res--;
-        if (0 <= res && res < n)
-            break;
-        std::cout << "\nInvalid query, please enter a valid number: ";
-    }
-    return res;
-}
-*/
-
-#endif
-
 std::string suits[SUIT_COUNT] =  {"clubs", "diamonds", "hearts", "spades"};
 std::string cards[SUIT_SIZE] = {"Ace", "2", "3", "4", "5", "6", "7", "8", "9", "10", "Jack", "Queen", "King"};
-
-template <std::size_t N>
-void reverse(std::bitset<N>& b)
-{
-    for (int i = 0; i < N/2; i++)
-    {
-        bool tmp = b[i];
-        b[i] = b[N-i-1];
-        b[N-i-1] = tmp;
-    }
-}
 
 GameState game_state;
 
 extern "C"
 {
+    struct Triplet { int a, b, c; };
+    struct Triplet get_best_move()
+    { 
+        std::array<int, 3> arr = get_best_move(game_state); 
+        struct Triplet res;
+        res.a = arr[0];
+        res.b = arr[1];
+        res.c = arr[2];
+        return res;
+    }
     void init();
     int human_deck(int suit, int card) { return decks[HUMAN][suit][card]; }
     int computer_deck(int suit, int card) { return decks[COMPUTER][suit][card]; }
@@ -158,92 +110,9 @@ void init()
 {
     srand((unsigned) time(NULL));
     decks[COMPUTER] = create_randomized_deck();
-    for (int i = 0; i < SUIT_COUNT; i++)
-        reverse(decks[COMPUTER][i]);
     decks[HUMAN] = inverse(decks[COMPUTER]);
-//    std::cout << "My deck: ";
-//    print_deck(decks[COMPUTER]);
-//    std::cout << "Your deck: ";
-//    print_deck(decks[HUMAN]);
     calculate_player_bounds();
     game_state.current_player = decks[COMPUTER][CLUBS][MCARD] ? COMPUTER : HUMAN;
-/*
-    bool has_won = false;
-
-    if (find_winner(game_state) == COMPUTER_WINNING)
-    {
-        std::cout << "I'll definitely win\n";
-        has_won = true;
-    }
-    else
-    {
-        std::cout << "I might lose if you play well.\n";
-    }
-    while (opponent_has_remaining_cards(game_state))
-    {
-        check_win_status(game_state, has_won);
-        progress_turn(game_state);
-    }
-    if (opponent(game_state.current_player) == COMPUTER_WINNING)
-        std::cout << "I won!\n";
-    else
-        std::cout << "I lost!\n";
-*/
-}
-
-/*
-void progress_turn(GameState& game_state)
-{
-    if (game_state.current_player == COMPUTER)
-        progress_computer_turn(game_state);
-    else
-        progress_human_turn(game_state);
-    game_state.switch_players();
-}
-*/
-
-void progress_computer_turn(GameState& game_state)
-{
-    std::array<int, 3> ai_move = get_best_move(game_state);
-    if (ai_move[0] == -1)
-    {
-        std::cout << "durd!\n";
-    }
-    else
-    {
-        std::cout << "I play " << cards[ai_move[2]] << " " << suits[ai_move[0]] << "\n";
-        game_state.apply_move(ai_move);
-    }
-}
-
-/*
-void progress_human_turn(GameState& game_state)
-{
-    if (!player_has_available_moves(game_state))
-    {
-        std::cout << "You've no moves to play!\n";
-        return;
-    }
-    int suit, card;
-    while (true)
-    {
-        suit = ask_choice("suit", suits, SUIT_COUNT);
-        card = ask_choice("card", cards, SUIT_SIZE);
-        if (is_card_valid_to_play(game_state, suit, card))
-            break;
-        std::cout << "You can't play that card silly :)\n";
-    }
-    game_state.apply_move(suit, card);
-}
-*/
-
-void check_win_status(GameState& game_state, bool& has_won)
-{
-    if (!has_won && find_winner(game_state) == COMPUTER_WINNING)
-    {
-        std::cout << "You lost your chance, I'll definitely win :)\n";
-        has_won = true;
-    }
 }
 
 // player is one or zero
