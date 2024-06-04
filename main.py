@@ -1,5 +1,7 @@
 import ctypes
 lib = ctypes.cdll.LoadLibrary("./liba.so")
+import flask
+
 L_SIZE     = 7
 R_SIZE     = 7
 SUIT_COUNT = 4 
@@ -24,22 +26,78 @@ class Triplet(ctypes.Structure):
 
 lib.get_best_move.restype = Triplet
 
-def main():
-    lib.init()
-    print("My deck:", end=" ")
-    print_deck(lib.computer_deck)
-    print("Your deck:", end=" ")
-    print_deck(lib.human_deck)
-    cnt = 0
-    while 1&lib.opponent_has_remaining_cards():
-        progress_turn()
+app = flask.Flask(__name__)
+@app.route("/")
+def hello_world():
+    return flask.render_template("mainpage.j2")
 
-def progress_turn():
+@app.route("/new-game")
+def new_game():
+    lib.init()
+    return flask.redirect("/game")
+    
+@app.route("/game")
+def game():
+    deck = []
+    for suit in range(SUIT_COUNT):
+        for card in range(SUIT_SIZE):
+            if lib.is_card_on_human_hand(suit, card):
+                deck.append((suit, card, get_card_file(card, suit)))
+    table = []
+    for suit in range(SUIT_COUNT):
+        line = []
+        low, high = lib.get_low_card(suit), lib.get_high_card(suit)
+        if high == SUIT_SIZE:
+            continue
+        for card in range(low, high+1):
+            line.append((suit, card, get_card_file(card, suit)))
+        table.append(line)
+    return flask.render_template("game.j2", deck=deck, table=table, current_player=lib.get_current_player(), player_has_available_moves=lib.player_has_available_moves())
+
+@app.route("/play")
+def play():
+    if not lib.opponent_has_remaining_cards() and lib.get_current_player() == HUMAN:
+        return flask.redirect("/computer-won")
+    elif not lib.opponent_has_remaining_cards():
+        return flask.redirect("/human-won")
+    if lib.get_current_player() != HUMAN:
+        return flask.redirect("/game")
+    suit, card = flask.request.args.get("suit"), flask.request.args.get("card")
+    if not (suit.isnumeric() and card.isnumeric()):
+        return flask.redirect("/game")
+    suit, card = int(suit), int(card)
+    if not (0 <= suit < SUIT_COUNT and 0 <= card < SUIT_SIZE):
+        return flask.redirect("/game")
+    if not lib.is_card_valid_to_play(suit, card):
+        return flask.redirect("/game")
+    lib.apply_move(suit, card)
+    lib.switch_players()
+    return flask.redirect("/game")
+
+@app.route("/advance-computer")
+def advance_computer():
+    if lib.get_current_player() == HUMAN and not lib.player_has_available_moves():
+        lib.switch_players()
+    if lib.get_current_player() == COMPUTER and not lib.opponent_has_remaining_cards():
+        return flask.redirect("/human-won")
     if lib.get_current_player() == COMPUTER:
         progress_computer_turn()
-    else:
-        progress_human_turn()
-    lib.switch_players()
+        lib.switch_players()
+    return flask.redirect("/game")
+
+@app.route("/computer-won")
+def computer_won():
+    return flask.render_template("computer_won.j2")
+
+@app.route("/human-won")
+def human_won():
+    return flask.render_template("human_won.j2")
+
+def get_card_file(card, suit):
+    return "/static/img/" + cards[card] + "_of_" + suits[suit] + ".png"
+
+def is_card_valid(card, suit):
+    return 0 <= card < SUIT_SIZE and 0 <= suit < SUIT_COUNT
 
 def progress_human_turn():
     if not lib.player_has_available_moves():
@@ -67,9 +125,7 @@ def ask_choice(name, arr):
 def progress_computer_turn():
     res = lib.get_best_move()
     if res.a == -1:
-        print("Durd!")
         return
-    print("I play", cards[res.c], suits[res.a])
     lib.apply_move(res.a, res.c)
     
 
@@ -81,4 +137,4 @@ def print_deck(deck_type):
     print()
 
 if __name__ == "__main__":
-    main()
+    app.run(debug=True)

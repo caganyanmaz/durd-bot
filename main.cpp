@@ -3,6 +3,7 @@
 #include <bitset>
 #include <cassert>
 #include <cstdlib>
+#include <cstring>
 
 #define DEBUGGING
 
@@ -60,6 +61,7 @@ int8_t process_move(GameState& game_state, int suit, int side, int new_val);
 bool player_has_available_moves(GameState& game_state);
 bool is_card_valid_to_play(const GameState& game_state, int suit, int card);
 bool opponent_has_remaining_cards(const GameState& game_state);
+bool is_card_on_human_hand(const GameState& game_state, int suit, int card);
 void calculate_player_bounds();
 void calculate_player_bounds(int player);
 
@@ -68,14 +70,11 @@ const int8_t HUMAN_WINNING    = 2;
 const int8_t UNPROCESSED      = 0;
 const int8_t COMPUTER         = 1;
 const int8_t HUMAN            = 2;
-const int8_t CLUBS            = 0; // I don't need to know about the rest of the suits' names :) (I need to know clubs because clubs 7 starts the game)
+const int8_t CLUBS            = 0; // The frontend may arbitarily assign suits to numbers, but 0 must be clubs (since player with 7 clubs starts the game)
 
 int8_t memory[2][L_SIZE][R_SIZE+1][L_SIZE][R_SIZE+1][L_SIZE][R_SIZE+1][L_SIZE][R_SIZE+1]; // (l, r) range, if r = R_SIZE, the set is not opened yet
 Deck decks[3];
 PlayerBound player_bounds[3];
-
-std::string suits[SUIT_COUNT] =  {"clubs", "diamonds", "hearts", "spades"};
-std::string cards[SUIT_SIZE] = {"Ace", "2", "3", "4", "5", "6", "7", "8", "9", "10", "Jack", "Queen", "King"};
 
 GameState game_state;
 
@@ -93,15 +92,15 @@ extern "C"
     }
     void init();
     int human_deck(int suit, int card) { return decks[HUMAN][suit][card]; }
+    int is_card_on_human_hand(int suit, int card) { return is_card_on_human_hand(game_state, suit, card); }
     int computer_deck(int suit, int card) { return decks[COMPUTER][suit][card]; }
     int player_has_available_moves() { return player_has_available_moves(game_state); }
     int is_card_valid_to_play(int suit, int card) { return is_card_valid_to_play(game_state, suit, card); }
     void apply_move(int suit, int card) { game_state.apply_move(suit, card); }
-    void progress_computer_turn() { progress_computer_turn(game_state); }
     int is_computer_winning() { return find_winner(game_state) == COMPUTER_WINNING; }
     int get_current_player() { return game_state.current_player; }
     int get_low_card(int suit) { return game_state.table_state[suit][0]; }
-    int get_high_card(int suit) { return game_state.table_state[suit][1]; }
+    int get_high_card(int suit) { return game_state.table_state[suit][1]+L_SIZE-1; }
     int opponent_has_remaining_cards() { return opponent_has_remaining_cards(game_state); }
     void switch_players() { game_state.switch_players(); }
 }
@@ -111,7 +110,9 @@ void init()
     srand((unsigned) time(NULL));
     decks[COMPUTER] = create_randomized_deck();
     decks[HUMAN] = inverse(decks[COMPUTER]);
+    memset(memory, 0, sizeof(memory));
     calculate_player_bounds();
+    game_state = GameState();
     game_state.current_player = decks[COMPUTER][CLUBS][MCARD] ? COMPUTER : HUMAN;
 }
 
@@ -245,6 +246,11 @@ bool opponent_has_remaining_cards(const GameState& game_state)
     return false;
 }
 
+bool is_card_on_human_hand(const GameState& game_state, int suit, int card)
+{
+    return human_deck(suit, card) && (!game_state.suit_opened(suit) || card <= game_state.get_left(suit) || card >= game_state.get_right(suit)); 
+}
+
 
 void calculate_player_bounds()
 {
@@ -286,7 +292,6 @@ int8_t& get_memory(const GameState& game_state)
 Deck create_randomized_deck()
 {
     std::bitset<DECK_SIZE> deck_bits;
-    // How many cards the deck will have (half of full deck as the cards are distributed evenly in the game)
     int half_size = DECK_SIZE / 2; 
     for (int i = 0; i < half_size; i++)
         deck_bits[i] = 1;

@@ -1,0 +1,33 @@
+{% extends "layouts/base.j2" %}
+{% block body %}
+    <div>
+        {% for line in table %}
+            <div>
+                {% set outer_index = loop.index %}
+                {% for (suit, card, filename) in line %}
+                <div class="card" 
+                    style="background-image: url(&quot;{{filename}}&quot;); transform: translate({{ 500 + 20 * loop.index }}px , {{ 150 * outer_index - 50}}px)">
+                </div>
+                {% endfor %}
+            </div>
+            </br>
+        {% endfor %}
+    </div>
+    <div>
+        {% for (suit, card, filename) in deck %}
+            <a href="/play?suit={{suit}}&card={{card}}">
+                <div class="card" 
+                    style="background-image: url(&quot;{{filename}}&quot;); transform: translate({{ 500 + 20 * loop.index }}px , 800px)">
+                </div>
+            </a>
+        {% endfor %}
+    </div>
+    <script>
+        const COMPUTER = 1;
+        const HUMAN = 2;
+        const current_player = {{ current_player }};
+        const player_has_available_moves = {{ player_has_available_moves }};
+        if (current_player == COMPUTER || !player_has_available_moves)
+            setTimeout(() => window.location.replace("/advance-computer"), 2000);
+    </script>
+{% endblock %}
