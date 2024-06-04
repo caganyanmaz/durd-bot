@@ -62,12 +62,17 @@ bool is_card_valid_to_play(const GameState& game_state, int suit, int card);
 bool opponent_has_remaining_cards(const GameState& game_state);
 void calculate_player_bounds();
 void calculate_player_bounds(int player);
+void progress_turn(GameState& game_state);
+void progress_computer_turn(GameState& game_state);
+void progress_human_turn(GameState& game_state);
+void check_win_status(GameState& game_state, bool& has_won);
 
-const int8_t FIRST_PLAYER_WINNING  = 1;
-const int8_t SECOND_PLAYER_WINNING = 2;
-const int8_t UNPROCESSED           = 0;
-const int8_t FIRST_PLAYER          = 1;
-const int8_t SECOND_PLAYER         = 2;
+const int8_t COMPUTER_WINNING = 1;
+const int8_t HUMAN_WINNING    = 2;
+const int8_t UNPROCESSED      = 0;
+const int8_t COMPUTER         = 1;
+const int8_t HUMAN            = 2;
+const int8_t CLUBS            = 0; // I don't need to know about the rest of the suits' names :) (I need to know clubs because clubs 7 starts the game)
 
 int8_t memory[2][L_SIZE][R_SIZE+1][L_SIZE][R_SIZE+1][L_SIZE][R_SIZE+1][L_SIZE][R_SIZE+1]; // (l, r) range, if r = R_SIZE, the set is not opened yet
 Deck decks[3];
@@ -95,6 +100,7 @@ void print_game_state(const GameState& game_state)
 
 }
 
+/*
 int ask_choice(std::string q, std::string names[], int n)
 {
     std::cout << "Pick " << q << ":\n";
@@ -111,6 +117,7 @@ int ask_choice(std::string q, std::string names[], int n)
     }
     return res;
 }
+*/
 
 #endif
 
@@ -128,24 +135,42 @@ void reverse(std::bitset<N>& b)
     }
 }
 
-int main()
+GameState game_state;
+
+extern "C"
+{
+    void init();
+    int human_deck(int suit, int card) { return decks[HUMAN][suit][card]; }
+    int computer_deck(int suit, int card) { return decks[COMPUTER][suit][card]; }
+    int player_has_available_moves() { return player_has_available_moves(game_state); }
+    int is_card_valid_to_play(int suit, int card) { return is_card_valid_to_play(game_state, suit, card); }
+    void apply_move(int suit, int card) { game_state.apply_move(suit, card); }
+    void progress_computer_turn() { progress_computer_turn(game_state); }
+    int is_computer_winning() { return find_winner(game_state) == COMPUTER_WINNING; }
+    int get_current_player() { return game_state.current_player; }
+    int get_low_card(int suit) { return game_state.table_state[suit][0]; }
+    int get_high_card(int suit) { return game_state.table_state[suit][1]; }
+    int opponent_has_remaining_cards() { return opponent_has_remaining_cards(game_state); }
+    void switch_players() { game_state.switch_players(); }
+}
+
+void init()
 {
     srand((unsigned) time(NULL));
-    // Getting the first player's deck
-    decks[1] = create_randomized_deck();
+    decks[COMPUTER] = create_randomized_deck();
     for (int i = 0; i < SUIT_COUNT; i++)
-        reverse(decks[1][i]);
-    // Calculating the second player's deck
-    decks[2] = inverse(decks[1]);
-    assert(decks[1][0][MCARD]); // First player must have the starting card
-    std::cout << "My deck: ";
-    print_deck(decks[1]);
-    std::cout << "Your deck: ";
-    print_deck(decks[2]);
+        reverse(decks[COMPUTER][i]);
+    decks[HUMAN] = inverse(decks[COMPUTER]);
+//    std::cout << "My deck: ";
+//    print_deck(decks[COMPUTER]);
+//    std::cout << "Your deck: ";
+//    print_deck(decks[HUMAN]);
     calculate_player_bounds();
-    GameState game_state;
+    game_state.current_player = decks[COMPUTER][CLUBS][MCARD] ? COMPUTER : HUMAN;
+/*
     bool has_won = false;
-    if (find_winner(game_state) == FIRST_PLAYER_WINNING)
+
+    if (find_winner(game_state) == COMPUTER_WINNING)
     {
         std::cout << "I'll definitely win\n";
         has_won = true;
@@ -156,47 +181,69 @@ int main()
     }
     while (opponent_has_remaining_cards(game_state))
     {
-        if (game_state.current_player == FIRST_PLAYER)
-        {
-            if (!has_won && find_winner(game_state) == FIRST_PLAYER_WINNING)
-            {
-                std::cout << "You lost your chance, I'll definitely win :)\n";
-                has_won = true;
-            }
-            std::array<int, 3> ai_move = get_best_move(game_state);
-            if (ai_move[0] == -1)
-            {
-                std::cout << "durd!\n";
-            }
-            else
-            {
-                std::cout << "I play " << cards[ai_move[2]] << " " << suits[ai_move[0]] << "\n";
-                game_state.apply_move(ai_move);
-            }
-        }
-        else if (!player_has_available_moves(game_state))
-        {
-            std::cout << "You've no moves to play!\n";
-        }
-        else
-        {
-            int suit, card;
-            while (true)
-            {
-                suit = ask_choice("suit", suits, SUIT_COUNT);
-                card = ask_choice("card", cards, SUIT_SIZE);
-                if (is_card_valid_to_play(game_state, suit, card))
-                    break;
-                std::cout << "You can't play that card silly :)\n";
-            }
-            game_state.apply_move(suit, card);
-        }
-        game_state.switch_players();
+        check_win_status(game_state, has_won);
+        progress_turn(game_state);
     }
-    if (opponent(game_state.current_player) == FIRST_PLAYER_WINNING)
+    if (opponent(game_state.current_player) == COMPUTER_WINNING)
         std::cout << "I won!\n";
     else
         std::cout << "I lost!\n";
+*/
+}
+
+/*
+void progress_turn(GameState& game_state)
+{
+    if (game_state.current_player == COMPUTER)
+        progress_computer_turn(game_state);
+    else
+        progress_human_turn(game_state);
+    game_state.switch_players();
+}
+*/
+
+void progress_computer_turn(GameState& game_state)
+{
+    std::array<int, 3> ai_move = get_best_move(game_state);
+    if (ai_move[0] == -1)
+    {
+        std::cout << "durd!\n";
+    }
+    else
+    {
+        std::cout << "I play " << cards[ai_move[2]] << " " << suits[ai_move[0]] << "\n";
+        game_state.apply_move(ai_move);
+    }
+}
+
+/*
+void progress_human_turn(GameState& game_state)
+{
+    if (!player_has_available_moves(game_state))
+    {
+        std::cout << "You've no moves to play!\n";
+        return;
+    }
+    int suit, card;
+    while (true)
+    {
+        suit = ask_choice("suit", suits, SUIT_COUNT);
+        card = ask_choice("card", cards, SUIT_SIZE);
+        if (is_card_valid_to_play(game_state, suit, card))
+            break;
+        std::cout << "You can't play that card silly :)\n";
+    }
+    game_state.apply_move(suit, card);
+}
+*/
+
+void check_win_status(GameState& game_state, bool& has_won)
+{
+    if (!has_won && find_winner(game_state) == COMPUTER_WINNING)
+    {
+        std::cout << "You lost your chance, I'll definitely win :)\n";
+        has_won = true;
+    }
 }
 
 // player is one or zero
@@ -332,8 +379,8 @@ bool opponent_has_remaining_cards(const GameState& game_state)
 
 void calculate_player_bounds()
 {
-    calculate_player_bounds(1); // player 1
-    calculate_player_bounds(2); // player 2
+    calculate_player_bounds(COMPUTER);
+    calculate_player_bounds(HUMAN);
 }
 
 void calculate_player_bounds(int player)
