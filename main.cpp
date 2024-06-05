@@ -4,6 +4,8 @@
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
+#include <string>
+#include <sstream>
 
 #define DEBUGGING
 
@@ -15,17 +17,17 @@ const int SUIT_SIZE  = L_SIZE + R_SIZE - 1;
 const int DECK_SIZE = SUIT_SIZE * SUIT_COUNT;
 
 typedef std::array<std::bitset<SUIT_SIZE>, SUIT_COUNT> Deck;
-typedef std::array<std::array<int8_t, 2>, SUIT_COUNT> PlayerBound;
+typedef std::array<std::array<int, 2>, SUIT_COUNT> PlayerBound;
 
-inline int8_t opponent(int8_t player)
+inline int opponent(int player)
 {
     return 3 - player;
 }
 
 struct GameState
 {
-    int8_t current_player;
-    std::array<std::array<int8_t, 2>, SUIT_COUNT> table_state;
+    int current_player;
+    std::array<std::array<int, 2>, SUIT_COUNT> table_state;
     bool suit_opened(int suit) const { return table_state[suit][1] != R_SIZE; }
     int get_left(int suit) const { return table_state[suit][0]-1; }
     int get_right(int suit) const { return table_state[suit][1]+L_SIZE; }
@@ -38,6 +40,14 @@ struct GameState
             apply_move(suit, 0, card);
         else
             apply_move(suit, 1, card);
+    }
+    std::string to_string() {
+        std::ostringstream os;
+        os << "{" << current_player << " ";
+        for (int i = 0; i < SUIT_COUNT; i++)
+            os << "(" << (int)table_state[i][0] << ", " << (int)table_state[i][1] << ") ";
+        os << "} ";
+        return os.str();
     }
     GameState()
     { 
@@ -53,11 +63,9 @@ struct GameState
 int8_t& get_memory(const GameState& game_state);
 Deck create_randomized_deck();
 Deck inverse(Deck deck);
-std::array<int, 3> get_best_move(GameState& game_state);
-int8_t find_winner(GameState& game_state);
-int8_t calculate_winner(GameState& game_state);
-int8_t calculate_suit(GameState& game_state, int suit);
-int8_t process_move(GameState& game_state, int suit, int side, int new_val);
+std::array<int, 4> calculate_best_move(GameState& game_state);
+int find_winner(GameState& game_state);
+int process_move(GameState& game_state, int suit, int side, int new_val);
 bool player_has_available_moves(GameState& game_state);
 bool is_card_valid_to_play(const GameState& game_state, int suit, int card);
 bool opponent_has_remaining_cards(const GameState& game_state);
@@ -65,12 +73,12 @@ bool is_card_on_human_hand(const GameState& game_state, int suit, int card);
 void calculate_player_bounds();
 void calculate_player_bounds(int player);
 
-const int8_t COMPUTER_WINNING = 1;
-const int8_t HUMAN_WINNING    = 2;
-const int8_t UNPROCESSED      = 0;
-const int8_t COMPUTER         = 1;
-const int8_t HUMAN            = 2;
-const int8_t CLUBS            = 0; // The frontend may arbitarily assign suits to numbers, but 0 must be clubs (since player with 7 clubs starts the game)
+const int COMPUTER_WINNING = 1;
+const int HUMAN_WINNING    = 2;
+const int UNPROCESSED      = 0;
+const int COMPUTER         = 1;
+const int HUMAN            = 2;
+const int CLUBS            = 0; // The frontend may arbitarily assign suits to numbers, but 0 must be clubs (since player with 7 clubs starts the game)
 
 int8_t memory[2][L_SIZE][R_SIZE+1][L_SIZE][R_SIZE+1][L_SIZE][R_SIZE+1][L_SIZE][R_SIZE+1]; // (l, r) range, if r = R_SIZE, the set is not opened yet
 Deck decks[3];
@@ -83,7 +91,7 @@ extern "C"
     struct Triplet { int a, b, c; };
     struct Triplet get_best_move()
     { 
-        std::array<int, 3> arr = get_best_move(game_state); 
+        std::array<int, 4> arr = calculate_best_move(game_state); 
         struct Triplet res;
         res.a = arr[0];
         res.b = arr[1];
@@ -103,10 +111,12 @@ extern "C"
     int get_high_card(int suit) { return game_state.table_state[suit][1]+L_SIZE-1; }
     int opponent_has_remaining_cards() { return opponent_has_remaining_cards(game_state); }
     void switch_players() { game_state.switch_players(); }
+    int find_winner() { return find_winner(game_state); }
 }
 
 void init()
 {
+    std::cout << "Development version\n";
     srand((unsigned) time(NULL));
     decks[COMPUTER] = create_randomized_deck();
     decks[HUMAN] = inverse(decks[COMPUTER]);
@@ -114,85 +124,78 @@ void init()
     calculate_player_bounds();
     game_state = GameState();
     game_state.current_player = decks[COMPUTER][CLUBS][MCARD] ? COMPUTER : HUMAN;
-}
-
-// player is one or zero
-int8_t find_winner(GameState& game_state)
-{
-    if (get_memory(game_state) == UNPROCESSED)
-        get_memory(game_state) = calculate_winner(game_state);
-    return get_memory(game_state);
+    // This lines are just for testing that computer always wins given better hand
+    if (find_winner(game_state) == HUMAN)
+    {
+        swap(decks[COMPUTER], decks[HUMAN]);
+        memset(memory, 0, sizeof(memory));
+        calculate_player_bounds();
+        game_state.current_player = decks[COMPUTER][CLUBS][MCARD] ? COMPUTER : HUMAN;
+    }
 }
 
 bool player_has_available_moves(GameState& game_state)
 {
-    return get_best_move(game_state)[0] != -1;
+    return calculate_best_move(game_state)[0] != -1;
 }
 
 // Return value: (Suit, side, move) if there's a move (-1, -1, -1) if no move exists
-std::array<int, 3> get_best_move(GameState& game_state)
+std::array<int, 4> calculate_best_move(GameState& game_state)
 {
     int player = game_state.current_player;
-    std::array<int, 3> best_move = {-1, -1, -1};
     if (!opponent_has_remaining_cards(game_state))
-        return best_move; // Clearly defeated
+        return {-1, -1, -1, opponent(player)}; // Clearly defeated
+    std::array<int, 4> best_move = {-1, -1, -1, -1};
     for (int i = 0; i < SUIT_COUNT; i++)
     {
         if (!game_state.suit_opened(i) && decks[player][i][MCARD])
         {
-            best_move = {i, 1, MCARD};
-            if (process_move(game_state, i, 1, 0) == player)
+            best_move = {i, 1, MCARD, process_move(game_state, i, 1, 0)};
+            if (best_move[3] == player)
                 return best_move;
         }
         if (!game_state.suit_opened(i))
             continue;
         if (game_state.get_left(i) >= 0 && decks[player][i][game_state.get_left(i)])
         {
-            best_move = {i, 0, game_state.get_left(i)};
-            if (process_move(game_state, i, 0, game_state.table_state[i][0]-1) == player)
+            best_move = {i, 0, game_state.get_left(i), process_move(game_state, i, 0, game_state.table_state[i][0]-1)};
+            if (best_move[3] == player)
                 return best_move;
         }
         if (game_state.get_right(i) < SUIT_SIZE && decks[player][i][game_state.get_right(i)])
         {
-            best_move = {i, 1, game_state.get_right(i)};
-            if (process_move(game_state, i, 1, game_state.table_state[i][0]+1) == player)
+            best_move = {i, 1, game_state.get_right(i), process_move(game_state, i, 1, game_state.table_state[i][1]+1)};
+            if (best_move[3] == player)
                 return best_move;
         }
+    }
+    if (best_move[0] == -1)
+    {
+        game_state.switch_players();
+        best_move[3] = find_winner(game_state);
+        game_state.switch_players();
     }
     return best_move;
 }
 
-int8_t calculate_winner(GameState& game_state)
+// player is one or zero
+int find_winner(GameState& game_state)
 {
-    int player = game_state.current_player;
-    if (!opponent_has_remaining_cards(game_state))
-        return opponent(player);
-    bool has_potential_moves = false;
-    for (int i = 0; i < SUIT_COUNT; i++)
-    {
-        uint8_t res = calculate_suit(game_state, i);
-        if (res == player)
-            return player;
-        has_potential_moves = has_potential_moves || (res == opponent(player));
-    }
-    if (has_potential_moves)
-        return opponent(player);
-    game_state.switch_players();
-    int8_t res = find_winner(game_state);
-    game_state.switch_players();
-    return res;
+    if (static_cast<int>(get_memory(game_state)) == UNPROCESSED)
+        get_memory(game_state) = (calculate_best_move(game_state))[3];
+    assert(get_memory(game_state) == HUMAN || get_memory(game_state) == COMPUTER);
+    return get_memory(game_state);
 }
 
-int8_t calculate_suit(GameState& game_state, int suit)
+/*
+int calculate_suit(GameState& game_state, int suit)
 {
     int player = game_state.current_player;
     if (!game_state.suit_opened(suit) && decks[player][suit][MCARD])
-    {
         return process_move(game_state, suit, 1, 0);
-    }
-    bool has_potential_moves = false;
     if (!game_state.suit_opened(suit))
         return UNPROCESSED;
+    bool has_potential_moves = false;
     if (game_state.get_left(suit) >= 0 && decks[player][suit][game_state.get_left(suit)])
     {
         has_potential_moves = true;
@@ -209,13 +212,14 @@ int8_t calculate_suit(GameState& game_state, int suit)
         return opponent(player);
     return UNPROCESSED;
 }
+*/
 
-int8_t process_move(GameState& game_state, int suit, int side, int new_val)
+int process_move(GameState& game_state, int suit, int side, int new_val)
 {
     int old_val = game_state.table_state[suit][side];
     game_state.table_state[suit][side] = new_val;
     game_state.switch_players();
-    int8_t res = find_winner(game_state);
+    int res = find_winner(game_state);
     game_state.table_state[suit][side] = old_val;
     game_state.switch_players();
     return res;
@@ -285,7 +289,7 @@ Deck inverse(Deck deck)
 int8_t& get_memory(const GameState& game_state)
 {
     auto table_state = game_state.table_state;
-    int8_t player_flag = game_state.current_player-1;
+    int player_flag = game_state.current_player-1;
     return memory[player_flag][table_state[0][0]][table_state[0][1]][table_state[1][0]][table_state[1][1]][table_state[2][0]][table_state[2][1]][table_state[3][0]][table_state[3][1]];
 }
 

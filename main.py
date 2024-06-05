@@ -1,6 +1,7 @@
 import ctypes
 lib = ctypes.cdll.LoadLibrary("./liba.so")
 import flask
+import logging
 
 L_SIZE     = 7
 R_SIZE     = 7
@@ -25,6 +26,8 @@ class Triplet(ctypes.Structure):
                 ("c", ctypes.c_int)]
 
 lib.get_best_move.restype = Triplet
+log = logging.getLogger('werkzeug')
+log.disabled = True
 
 app = flask.Flask(__name__)
 @app.route("/")
@@ -38,6 +41,8 @@ def new_game():
     
 @app.route("/game")
 def game():
+    if not lib.opponent_has_remaining_cards() and lib.get_current_player() == HUMAN:
+        return flask.redirect("/computer-won")
     deck = []
     for suit in range(SUIT_COUNT):
         for card in range(SUIT_SIZE):
@@ -52,14 +57,11 @@ def game():
         for card in range(low, high+1):
             line.append((suit, card, get_card_file(card, suit)))
         table.append(line)
-    return flask.render_template("game.j2", deck=deck, table=table, current_player=lib.get_current_player(), player_has_available_moves=lib.player_has_available_moves())
+    winner = lib.find_winner()
+    return flask.render_template("game.j2", deck=deck, table=table, current_player=lib.get_current_player(), player_has_available_moves=lib.player_has_available_moves(), human_wins=(winner == HUMAN))
 
 @app.route("/play")
 def play():
-    if not lib.opponent_has_remaining_cards() and lib.get_current_player() == HUMAN:
-        return flask.redirect("/computer-won")
-    elif not lib.opponent_has_remaining_cards():
-        return flask.redirect("/human-won")
     if lib.get_current_player() != HUMAN:
         return flask.redirect("/game")
     suit, card = flask.request.args.get("suit"), flask.request.args.get("card")

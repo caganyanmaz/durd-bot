@@ -1,6 +1,10 @@
 {% extends "layouts/base.j2" %}
 {% block body %}
     <div>
+        {{ 'Winner might be you!' if human_wins else 'Computer definitely wins.' }}
+    </div>
+
+    <div>
         {% for line in table %}
             <div>
                 {% set outer_index = loop.index %}
